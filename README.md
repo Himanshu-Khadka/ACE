@@ -12,6 +12,20 @@ UAlberta uses Canvas and I got tired of clicking through every course to find sl
 
 Re-running `ace sync` only grabs things that changed since last time.
 
+A lot of profs hide the Files or Pages tab, which makes Canvas return 403/404 for the normal file list. ACE gets around that by collecting every file and page linked from modules, assignments, announcements and the syllabus and downloading those one by one. Anything that's still locked or unpublished gets counted as "no access" at the end.
+
+Everything is saved per course:
+
+```
+data/courses/
+  CMPUT 201/
+    files/            the actual pdfs, slides, etc.
+    assignments/      one .md per assignment (with due date + link)
+    announcements/    named by date so they sort
+    pages/            course pages + syllabus
+    modules/          outline of each module
+```
+
 ## Layout
 
 ```
@@ -48,7 +62,8 @@ Fill in `.env`:
 ```bash
 ace sync                  # download / refresh everything
 ace sync --course 12345   # just one course
-ace search "midterm"
+ace courses               # list courses + what got downloaded for each
+ace search "midterm"      # results grouped by course
 ace serve                 # API docs at http://127.0.0.1:8000/docs
 ```
 
