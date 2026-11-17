@@ -93,7 +93,16 @@ class Store:
         self.conn.commit()
 
     def list_courses(self) -> list[dict[str, Any]]:
-        return [dict(r) for r in self.conn.execute("SELECT * FROM courses ORDER BY name")]
+        """Courses with how many of each kind of document they have."""
+        courses = [dict(r) for r in self.conn.execute("SELECT * FROM courses ORDER BY code, name")]
+        counts = self.conn.execute("SELECT course_id, kind, COUNT(*) AS n FROM documents GROUP BY course_id, kind")
+        by_id = {c["id"]: c for c in courses}
+        for c in courses:
+            c["counts"] = {}
+        for r in counts:
+            if r["course_id"] in by_id:
+                by_id[r["course_id"]]["counts"][r["kind"]] = r["n"]
+        return courses
 
     def list_documents(self, course_id: int | None = None, kind: str | None = None) -> list[dict]:
         sql = "SELECT id, course_id, kind, title, url, local_path, updated_at, due_at FROM documents WHERE 1=1"
@@ -113,9 +122,10 @@ class Store:
     def search(self, query: str, course_id: int | None = None, limit: int = 10) -> list[dict]:
         if not _fts_query(query):
             return []
-        sql = """SELECT d.id, d.course_id, d.kind, d.title, d.url, d.due_at,
+        sql = """SELECT d.id, d.course_id, c.code AS course, d.kind, d.title, d.url, d.due_at,
                         snippet(documents_fts, 1, '[', ']', ' ... ', 24) AS snippet
                  FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
+                 JOIN courses c ON c.id = d.course_id
                  WHERE documents_fts MATCH ?"""
         args: list[Any] = [_fts_query(query)]
         if course_id is not None:
@@ -126,7 +136,7 @@ class Store:
         return [dict(r) for r in self.conn.execute(sql, args)]
 
     def upcoming(self, since_iso: str, limit: int = 20) -> list[dict]:
-        sql = """SELECT d.id, d.title, d.due_at, d.url, c.name AS course
+        sql = """SELECT d.id, d.title, d.due_at, d.url, c.code AS course
                  FROM documents d JOIN courses c ON c.id = d.course_id
                  WHERE d.kind='assignment' AND d.due_at >= ? ORDER BY d.due_at LIMIT ?"""
         return [dict(r) for r in self.conn.execute(sql, (since_iso, limit))]

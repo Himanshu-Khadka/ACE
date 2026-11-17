@@ -19,8 +19,8 @@ class Settings:
         return self.data_dir / "canvas.db"
 
     @property
-    def files_dir(self) -> Path:
-        return self.data_dir / "files"
+    def courses_dir(self) -> Path:
+        return self.data_dir / "courses"
 
 
 def load_settings(require_token: bool = True) -> Settings:

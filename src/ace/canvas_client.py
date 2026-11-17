@@ -56,8 +56,17 @@ class CanvasClient:
     def modules(self, course_id: int) -> Iterator[dict]:
         return self.paginate(f"/courses/{course_id}/modules", {"include[]": "items"})
 
+    def module_items(self, course_id: int, module_id: int) -> Iterator[dict]:
+        return self.paginate(f"/courses/{course_id}/modules/{module_id}/items")
+
     def files(self, course_id: int) -> Iterator[dict]:
         return self.paginate(f"/courses/{course_id}/files")
+
+    def file(self, file_id: int) -> dict:
+        return self._get(f"/files/{file_id}").json()
+
+    def syllabus(self, course_id: int) -> str | None:
+        return self._get(f"/courses/{course_id}", {"include[]": "syllabus_body"}).json().get("syllabus_body")
 
     def pages(self, course_id: int) -> Iterator[dict]:
         return self.paginate(f"/courses/{course_id}/pages")
