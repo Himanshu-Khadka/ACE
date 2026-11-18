@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -23,6 +24,9 @@ func New(st *store.Store, loc *time.Location) *Service {
 }
 
 var notDone = []string{"todo", "missing"}
+
+// ErrBadInput is for things like a date we can't read (the api turns it into a 400).
+var ErrBadInput = errors.New("bad input")
 
 // Deadlines is upcoming work, soonest first. Done stuff is left out unless
 // includeDone is set.
@@ -178,7 +182,7 @@ func (s *Service) ParseTime(v string) (time.Time, error) {
 			return s.Now().AddDate(0, 0, -n), nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("can't read time %q, use 2026-11-20, 2026-11-20T15:00:00Z or 24h", v)
+	return time.Time{}, fmt.Errorf("%w: can't read time %q, use 2026-11-20, 2026-11-20T15:00:00Z or 24h", ErrBadInput, v)
 }
 
 func cut(s string, n int) string {
