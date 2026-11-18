@@ -154,7 +154,7 @@ func TestSyncAndChanges(t *testing.T) {
 		DueSoon: 48 * time.Hour, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: func() time.Time { return now }}
 
 	sched := NewScheduler(sy, time.Hour, "")
-	sched.runOnce(ctx) // first run goes through the scheduler so it gets saved in sync_runs
+	sched.RunOnce(ctx) // first run goes through the scheduler so it gets saved in sync_runs
 
 	// hidden tabs: file 10 comes from the module, 11 from the assignment, page from the module
 	for _, id := range []string{"file:10", "file:11", "page:3", "syllabus:7", "announcement:20"} {

@@ -67,7 +67,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 				}
 			}
 		}
-		s.runOnce(ctx)
+		s.RunOnce(ctx)
 		timer.Reset(s.Interval)
 		s.mu.Lock()
 		s.nextRun = time.Now().Add(s.Interval)
@@ -75,7 +75,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-func (s *Scheduler) runOnce(ctx context.Context) {
+// RunOnce does one sync, saves it in sync_runs and sends the webhook.
+func (s *Scheduler) RunOnce(ctx context.Context) {
 	s.mu.Lock()
 	s.running = true
 	s.mu.Unlock()
