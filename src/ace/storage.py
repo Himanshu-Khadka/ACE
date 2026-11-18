@@ -31,6 +31,25 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_docs_course ON documents(course_id, kind);
 CREATE INDEX IF NOT EXISTS idx_docs_due ON documents(due_at);
 
+-- everything with a date: deadlines and calendar events
+CREATE TABLE IF NOT EXISTS calendar (
+    id TEXT PRIMARY KEY,          -- "assignment:1", "event:2", "planner:quiz:3"
+    course_id INTEGER,            -- NULL for personal planner notes
+    type TEXT NOT NULL,           -- assignment | quiz | discussion | event | todo
+    title TEXT NOT NULL,
+    start_at TEXT,                -- for deadlines this is the due date
+    end_at TEXT,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    is_deadline INTEGER NOT NULL DEFAULT 0,
+    status TEXT,                  -- todo | submitted | graded | missing | excused | none
+    points REAL,
+    score REAL,
+    location TEXT,
+    url TEXT,
+    description TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_cal_start ON calendar(start_at);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
     title, body, content='documents', content_rowid='rowid', tokenize='porter unicode61'
 );
@@ -47,6 +66,24 @@ CREATE TRIGGER IF NOT EXISTS docs_au AFTER UPDATE ON documents BEGIN
     INSERT INTO documents_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
 END;
 """
+
+
+@dataclass
+class CalendarItem:
+    id: str
+    course_id: int | None
+    type: str
+    title: str
+    start_at: str | None
+    end_at: str | None = None
+    all_day: bool = False
+    is_deadline: bool = False
+    status: str | None = None
+    points: float | None = None
+    score: float | None = None
+    location: str | None = None
+    url: str | None = None
+    description: str = ""
 
 
 @dataclass
@@ -85,6 +122,18 @@ class Store:
             (d.id, d.course_id, d.kind, d.title, d.url, d.local_path, d.updated_at, d.due_at, d.body),
         )
 
+    def upsert_calendar(self, c: CalendarItem) -> None:
+        self.conn.execute(
+            """INSERT OR REPLACE INTO calendar(id, course_id, type, title, start_at, end_at, all_day,
+                   is_deadline, status, points, score, location, url, description)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (c.id, c.course_id, c.type, c.title, c.start_at, c.end_at, int(c.all_day), int(c.is_deadline),
+             c.status, c.points, c.score, c.location, c.url, c.description),
+        )
+
+    def has_calendar(self, item_id: str) -> bool:
+        return self.conn.execute("SELECT 1 FROM calendar WHERE id=?", (item_id,)).fetchone() is not None
+
     def updated_at(self, doc_id: str) -> str | None:
         row = self.conn.execute("SELECT updated_at FROM documents WHERE id=?", (doc_id,)).fetchone()
         return row["updated_at"] if row else None
@@ -115,6 +164,10 @@ class Store:
             args.append(kind)
         return [dict(r) for r in self.conn.execute(sql + " ORDER BY title", args)]
 
+    def recent_documents(self, course_id: int, kind: str, limit: int = 5) -> list[dict]:
+        sql = "SELECT * FROM documents WHERE course_id=? AND kind=? ORDER BY updated_at DESC LIMIT ?"
+        return [dict(r) for r in self.conn.execute(sql, (course_id, kind, limit))]
+
     def get_document(self, doc_id: str) -> dict | None:
         row = self.conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
         return dict(row) if row else None
@@ -135,11 +188,47 @@ class Store:
         args.append(limit)
         return [dict(r) for r in self.conn.execute(sql, args)]
 
+    def resolve_course(self, course: str | int | None) -> int | None:
+        """Turn "cmput 201", "CMPUT201", a course name or an id into a course id."""
+        if course is None or course == "":
+            return None
+        if isinstance(course, int) or str(course).isdigit():
+            return int(course)
+        norm = lambda x: (x or "").lower().replace(" ", "")  # noqa: E731
+        needle = norm(str(course))
+        courses = self.list_courses()
+        exact = [c for c in courses if needle in (norm(c["code"]), norm(c["name"]))]
+        matches = exact or [c for c in courses if needle in norm(c["code"]) or needle in norm(c["name"])]
+        if len(matches) == 1:
+            return matches[0]["id"]
+        if not matches:
+            raise LookupError(f"no course matching {course!r}")
+        names = ", ".join(c["code"] or c["name"] for c in matches)
+        raise LookupError(f"{course!r} matches more than one course ({names}), be more specific")
+
+    def calendar_items(self, start: str | None = None, end: str | None = None, course_id: int | None = None,
+                       deadlines_only: bool = False, statuses: list[str] | None = None) -> list[dict]:
+        sql = """SELECT k.*, c.code AS course FROM calendar k
+                 LEFT JOIN courses c ON c.id = k.course_id WHERE k.start_at IS NOT NULL"""
+        args: list[Any] = []
+        if start:
+            sql += " AND k.start_at >= ?"
+            args.append(start)
+        if end:
+            sql += " AND k.start_at < ?"
+            args.append(end)
+        if course_id is not None:
+            sql += " AND k.course_id = ?"
+            args.append(course_id)
+        if deadlines_only:
+            sql += " AND k.is_deadline = 1"
+        if statuses:
+            sql += f" AND k.status IN ({','.join('?' * len(statuses))})"
+            args.extend(statuses)
+        return [dict(r) for r in self.conn.execute(sql + " ORDER BY k.start_at", args)]
+
     def upcoming(self, since_iso: str, limit: int = 20) -> list[dict]:
-        sql = """SELECT d.id, d.title, d.due_at, d.url, c.code AS course
-                 FROM documents d JOIN courses c ON c.id = d.course_id
-                 WHERE d.kind='assignment' AND d.due_at >= ? ORDER BY d.due_at LIMIT ?"""
-        return [dict(r) for r in self.conn.execute(sql, (since_iso, limit))]
+        return self.calendar_items(start=since_iso, deadlines_only=True)[:limit]
 
 
 # quote every word, otherwise input like "C++" breaks the FTS query syntax

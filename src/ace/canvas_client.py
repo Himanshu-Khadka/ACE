@@ -14,6 +14,7 @@ import httpx
 
 class CanvasClient:
     def __init__(self, base_url: str, token: str, transport: httpx.BaseTransport | None = None):
+        self.base_url = base_url
         self._http = httpx.Client(
             base_url=f"{base_url}/api/v1",
             headers={"Authorization": f"Bearer {token}"},
@@ -75,7 +76,19 @@ class CanvasClient:
         return self._get(f"/courses/{course_id}/pages/{url}").json()
 
     def assignments(self, course_id: int) -> Iterator[dict]:
-        return self.paginate(f"/courses/{course_id}/assignments")
+        # include[]=submission tells us if it's submitted / graded / missing
+        return self.paginate(f"/courses/{course_id}/assignments", {"include[]": "submission"})
+
+    def calendar_events(self, course_id: int) -> Iterator[dict]:
+        # lectures, exams, office hours etc. that the prof put on the calendar
+        return self.paginate(
+            "/calendar_events",
+            {"context_codes[]": f"course_{course_id}", "all_events": "true", "type": "event"},
+        )
+
+    def planner_items(self, start: str, end: str) -> Iterator[dict]:
+        # the "to do" list: quizzes, discussions, pages with to-do dates, personal notes
+        return self.paginate("/planner/items", {"start_date": start, "end_date": end})
 
     def announcements(self, course_id: int) -> Iterator[dict]:
         # without start_date Canvas only returns the last 14 days

@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 
 from .canvas_client import CanvasClient
+from .deadlines import from_assignment, from_event, from_planner, now_iso
 from .extract import file_to_text, html_to_text
 from .storage import Document, Store
 
@@ -76,9 +77,12 @@ def sync_all(client: CanvasClient, store: Store, courses_dir: Path, course_filte
         _try(lambda: _sync_syllabus(client, save, cid, refs, stats), "syllabus")
         _try(lambda: _sync_assignments(client, store, save, cid, refs, stats), "assignments")
         _try(lambda: _sync_announcements(client, store, save, cid, refs, stats), "announcements")
+        _try(lambda: _sync_events(client, store, cid, stats), "calendar")
         _sync_pages(client, store, save, cid, refs, stats)
         _sync_files(client, store, cid, course_dir / "files", refs, stats)
         store.commit()
+    _try(lambda: _sync_planner(client, store, stats), "planner")
+    store.commit()
     return stats
 
 
@@ -149,6 +153,8 @@ def _sync_syllabus(client, save, cid, refs, stats) -> None:
 def _sync_assignments(client, store, save, cid, refs, stats) -> None:
     for a in client.assignments(cid):
         refs.scan_html(a.get("description"))
+        # always update this one: submitting doesn't change the assignment's updated_at
+        store.upsert_calendar(from_assignment(a, cid))
         doc_id = f"assignment:{a['id']}"
         if store.updated_at(doc_id) == a.get("updated_at"):
             continue
@@ -158,6 +164,26 @@ def _sync_assignments(client, store, save, cid, refs, stats) -> None:
             body=html_to_text(a.get("description")),
         ))
         stats.ok("assignment")
+
+
+def _sync_events(client, store, cid, stats) -> None:
+    for e in client.calendar_events(cid):
+        store.upsert_calendar(from_event(e, cid))
+        stats.ok("event")
+
+
+def _sync_planner(client, store, stats) -> None:
+    # one call for all courses; only adds what isn't already an assignment/event
+    for p in client.planner_items(now_iso(-120)[:10], now_iso(365)[:10]):
+        assignment_id = (p.get("plannable") or {}).get("assignment_id")
+        if p.get("plannable_type") in ("assignment", "calendar_event") or (
+            assignment_id and store.has_calendar(f"assignment:{assignment_id}")
+        ):
+            continue
+        item = from_planner(p, client.base_url)
+        if item:
+            store.upsert_calendar(item)
+            stats.ok("todo")
 
 
 def _sync_announcements(client, store, save, cid, refs, stats) -> None:
