@@ -2,6 +2,8 @@
 
 UAlberta uses Canvas and I got tired of clicking through every course to find slides, due dates and announcements. ACE downloads all of it to my laptop, pulls the text out of the PDFs/slides/docs, and puts it in a searchable SQLite db. Then I can query it from the terminal, a small REST API, or straight from Claude through an MCP server.
 
+> There's also a Go version in [`go/`](go/README.md) that runs in Docker with Postgres, syncs on a schedule by itself, tracks what changed (new files, moved deadlines, stuff getting graded) and has an API + MCP for AI agents. That's the one I leave running.
+
 ## What it syncs
 
 - files (PDF, PPTX, DOCX, code, text)
@@ -127,6 +129,6 @@ The test fakes the Canvas API so it runs without a token.
 ## TODO
 
 - semantic search with embeddings
-- auto sync on a schedule (Windows Task Scheduler for now)
+- ~~auto sync on a schedule~~ done in the go version
 - push straight to Google Calendar instead of importing a file
 - web UI
