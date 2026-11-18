@@ -80,7 +80,7 @@ def test_resync_skips_unchanged(tmp_path):
     api = TestClient(create_app(store))
     course = api.get("/courses").json()[0]
     assert course["code"] == "CMPUT 201" and course["counts"]["file"] == 2
-    assert api.get("/upcoming").json()[0]["title"] == "Lab 1"
+    assert api.get("/deadlines", params={"days": 30000}).json()[0]["title"] == "Lab 1"
     assert "pointer" in api.get("/documents/assignment:30").json()["body"]
     assert store.search("C++ what's") == []
 
