@@ -405,9 +405,9 @@ type Change struct {
 	DedupeKey  string    `json:"-"`
 }
 
-// AddChange saves a change. If it has a dedupe key that was already used it's
-// skipped and added is false.
-func (s *Store) AddChange(ctx context.Context, ch Change) (added bool, err error) {
+// AddChange saves a change and fills in its id and time. If it has a dedupe
+// key that was already used it's skipped and added is false.
+func (s *Store) AddChange(ctx context.Context, ch *Change) (added bool, err error) {
 	var course *int64
 	if ch.CourseID != 0 {
 		course = &ch.CourseID
@@ -416,11 +416,15 @@ func (s *Store) AddChange(ctx context.Context, ch Change) (added bool, err error
 	if ch.DedupeKey != "" {
 		key = &ch.DedupeKey
 	}
-	tag, err := s.db.Exec(ctx, `
+	err = s.db.QueryRow(ctx, `
 		INSERT INTO changes (kind, item_id, course_id, title, old_value, new_value, url, dedupe_key)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (dedupe_key) DO NOTHING`,
-		ch.Kind, ch.ItemID, course, ch.Title, ch.Old, ch.New, ch.URL, key)
-	return tag.RowsAffected() == 1, err
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (dedupe_key) DO NOTHING
+		RETURNING id, detected_at`,
+		ch.Kind, ch.ItemID, course, ch.Title, ch.Old, ch.New, ch.URL, key).Scan(&ch.ID, &ch.DetectedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 type ChangeFilter struct {
@@ -502,4 +506,10 @@ func limitOr(n, def int) int {
 		return def
 	}
 	return n
+}
+
+// ResetForTests empties every table. Only the tests call this.
+func (s *Store) ResetForTests(ctx context.Context) error {
+	_, err := s.db.Exec(ctx, `TRUNCATE courses, documents, calendar_items, changes, sync_runs RESTART IDENTITY CASCADE`)
+	return err
 }

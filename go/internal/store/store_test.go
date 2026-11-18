@@ -21,7 +21,7 @@ func testDB(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(ctx, `TRUNCATE courses, documents, calendar_items, changes, sync_runs RESTART IDENTITY CASCADE`); err != nil {
+	if err := s.ResetForTests(ctx); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
@@ -84,14 +84,14 @@ func TestCalendarAndChanges(t *testing.T) {
 		t.Fatalf("want 2 items, got %d", len(all))
 	}
 
-	added, err := s.AddChange(ctx, Change{Kind: "due_soon", ItemID: "assignment:1", CourseID: 1, Title: "Lab 4", DedupeKey: "x"})
+	added, err := s.AddChange(ctx, &Change{Kind: "due_soon", ItemID: "assignment:1", CourseID: 1, Title: "Lab 4", DedupeKey: "x"})
 	must(t, err)
-	again, err := s.AddChange(ctx, Change{Kind: "due_soon", ItemID: "assignment:1", CourseID: 1, Title: "Lab 4", DedupeKey: "x"})
+	again, err := s.AddChange(ctx, &Change{Kind: "due_soon", ItemID: "assignment:1", CourseID: 1, Title: "Lab 4", DedupeKey: "x"})
 	must(t, err)
 	if !added || again {
 		t.Fatalf("dedupe didn't work: %v %v", added, again)
 	}
-	_, err = s.AddChange(ctx, Change{Kind: "new_file", ItemID: "file:3", CourseID: 1, Title: "notes.pdf"})
+	_, err = s.AddChange(ctx, &Change{Kind: "new_file", ItemID: "file:3", CourseID: 1, Title: "notes.pdf"})
 	must(t, err)
 
 	got, err := s.Changes(ctx, ChangeFilter{})
