@@ -409,10 +409,14 @@ func (r *run) pages(ctx context.Context, c canvas.Course, ref *refs) error {
 		}
 		p, err := r.Canvas.Page(ctx, c.ID, slug) // the list doesn't include the body
 		if err != nil {
-			if !canvas.IsNoAccess(err) {
-				return err
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-			r.res.noAccess("page") // unpublished or locked
+			if canvas.IsNoAccess(err) {
+				r.res.noAccess("page") // unpublished or locked
+			} else {
+				r.res.fail(fmt.Sprintf("%s page %s", c.CourseCode, slug), err)
+			}
 			continue
 		}
 		ref.scan(p.Body)
@@ -468,10 +472,15 @@ func (r *run) files(ctx context.Context, c canvas.Course, ref *refs) error {
 		if !ok {
 			var err error
 			if f, err = r.Canvas.File(ctx, id); err != nil {
-				if !canvas.IsNoAccess(err) {
-					return err
+				if ctx.Err() != nil {
+					return ctx.Err()
 				}
-				r.res.noAccess("file")
+				// one broken file shouldn't stop the rest
+				if canvas.IsNoAccess(err) {
+					r.res.noAccess("file")
+				} else {
+					r.res.fail(fmt.Sprintf("%s file %d", c.CourseCode, id), err)
+				}
 				continue
 			}
 		}
