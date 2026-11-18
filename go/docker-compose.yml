@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:17-alpine
+    # POSTGRES_PASSWORD comes from .env
+    env_file: .env
+    environment:
+      POSTGRES_USER: ace
+      POSTGRES_DB: ace
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ace -d ace"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # not published on purpose, only ace can reach it. to poke around use
+    #   docker compose exec db psql -U ace
+
+  ace:
+    build: .
+    env_file: .env
+    environment:
+      # ace builds the connection string from these + POSTGRES_PASSWORD in .env
+      POSTGRES_HOST: db
+      POSTGRES_USER: ace
+      POSTGRES_DB: ace
+      DATA_DIR: /data
+    ports:
+      # only reachable from this computer. change to "8080:8080" to open it up
+      # to your network (set API_TOKEN first)
+      - "127.0.0.1:${ACE_PORT:-8080}:8080"
+    volumes:
+      - acedata:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  acedata:
