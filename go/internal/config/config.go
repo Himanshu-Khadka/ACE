@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -51,7 +52,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("TZ: %w", err)
 	}
 	if c.DatabaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is not set")
+		c.DatabaseURL = postgresURL()
+	}
+	if c.DatabaseURL == "" {
+		return nil, fmt.Errorf("set DATABASE_URL, or POSTGRES_PASSWORD (+ POSTGRES_HOST/USER/DB)")
 	}
 	return c, nil
 }
@@ -62,6 +66,23 @@ func (c *Config) CheckCanvas() error {
 		return fmt.Errorf("set CANVAS_BASE_URL and CANVAS_TOKEN in .env (see .env.example)")
 	}
 	return nil
+}
+
+// postgresURL builds the connection string from the same POSTGRES_* vars the
+// postgres image uses, so the password only has to live in .env
+func postgresURL() string {
+	pw := os.Getenv("POSTGRES_PASSWORD")
+	if pw == "" {
+		return ""
+	}
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(env("POSTGRES_USER", "ace"), pw),
+		Host:     env("POSTGRES_HOST", "localhost") + ":" + env("POSTGRES_PORT", "5432"),
+		Path:     env("POSTGRES_DB", "ace"),
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
 }
 
 func env(key, def string) string {
